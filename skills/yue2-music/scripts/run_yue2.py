@@ -49,9 +49,12 @@ def request_data(args):
 
 
 def options(args):
-    return dict(model=args.model, vae=args.vae, revision=args.revision,
+    loader = dict(model=args.model, vae=args.vae, revision=args.revision,
                 vae_revision=args.vae_revision, local_files_only=args.offline,
                 device=args.device, memory_budget_gib=args.memory_budget_gib)
+    if getattr(args, "backend", None):
+        loader["backend"] = args.backend
+    return loader
 
 
 def score_check(text, mode):
@@ -201,6 +204,8 @@ def main():
         command.add_argument("--offline", action="store_true")
         command.add_argument("--device", default="cuda")
         command.add_argument("--memory-budget-gib", type=float, default=24)
+        command.add_argument("--backend", choices=("torch", "torch-eager", "vllm"),
+                            help="Generation backend; use torch-eager on hosts where the CUDA-graph path is unavailable")
     args = parser.parse_args()
     try:
         return run(args)
