@@ -67,6 +67,15 @@ def attention(q, k, v, *, causal=False, backend="sdpa", query_chunk_size=None):
     if query_chunk_size is not None and (isinstance(query_chunk_size, bool) or
                                         not isinstance(query_chunk_size, Integral) or query_chunk_size < 1):
         raise ValueError("query_chunk_size must be a positive integer")
+    if query_chunk_size is None:
+        # Local patch (2026-09-11): allow bounding NAR attention temp storage
+        # for long-song renders on 32 GiB cards via env var. Inert unless set.
+        # See yue2-music skill, "CUDA OOM on long songs".
+        import os
+        try:
+            query_chunk_size = int(os.environ.get("YUE2_QUERY_CHUNK_SIZE", "0")) or None
+        except ValueError:
+            query_chunk_size = None
     block = query_chunk_size or (len(q) if q.device.type == "cuda" and backend != "math" else 256)
     query = q.transpose(0, 1).unsqueeze(0)
     key = k.transpose(0, 1).unsqueeze(0)
