@@ -20,6 +20,7 @@ model interfaces. Retain an original song and its plan before making changes.
 | Change harmony, instruments, tempo, structure, or lyrics | Copy full plan → edit ABC/text → regenerate |
 | Agentic editing | Export plan/baseline → bounded editing agent → check invariants → render → compare |
 | Analyze musical features | Use MERT2 only when continuous features are needed |
+| Generate with the GGUF / low-VRAM engine (Q8/Q4) | audio.cpp GGUF CLI — read [gguf-engine.md](references/gguf-engine.md) |
 
 ```text
 audio → SheetSage2 [loads MERT-v2-FullSong itself] → ABC
@@ -31,6 +32,15 @@ style + lyrics      → YuE2 off generation      → synthesis → latents → V
 
 Do not feed public MERT feature tensors to YuE2 as codec tokens. YuE2 exposes no
 audio-reference, phoneme-alignment, or local-inpainting argument.
+
+## Choose the engine
+
+Two engines are available on this host; pick per request (the user may name one explicitly):
+
+- **torch** (default): `yue2` CLI or `run_yue2.py` helper with `--backend torch-eager`. Use for editable plans, ABC export, plan-only, and the normal workflow.
+- **audio.cpp GGUF**: standalone CLI (`D:\AI\audio.cpp\build\windows-cuda-release\bin\audiocpp_cli.exe`) with the GGUF bundle in `D:\AI\YuE\models\Yue2-3B-GGUF`. Use when the user asks for GGUF/Q8/Q4/low-VRAM. **Not available for plan-only or ABC export.** See [gguf-engine.md](references/gguf-engine.md) for the exact command and request-JSON shape.
+
+Both write to `D:\AI\output\YuE\<name>\`. Torch results carry structured truncation flags; GGUF results do not — mark them "needs review" and listen for a complete ending.
 
 ## Set up the needed models
 
@@ -134,6 +144,42 @@ Read [editing-workflows.md](references/editing-workflows.md) and
 For lyric translation, adapt syllables, stress, vowels and breath points. Keep a
 syllable/phoneme-to-note sidecar. Do not invent a `phonemes` field or mistake the sidecar
 for hard acoustic alignment. Use ASR/PER and listening as separate evidence.
+
+## CUDA OOM on long songs (this host: RTX 5090, 32 GiB)
+
+Symptom: `generate` completes the AR phase (8320 tokens) then dies at
+"Synthesizing audio" with `OutOfMemoryError` (e.g. "Tried to allocate 2.33 GiB
+... 27.22 GiB is allocated by PyTorch"). Cause: the NAR acoustic stage holds
+the AR model + a KV prefix cache that grows with song length; a long track
+(333 s) pushes base allocation to ~27 GiB, and the final attention step needs a
+2.33 GiB contiguous block. On this Windows platform `expandable_segments`
+(the standard anti-fragmentation fix) is a **no-op**, so the allocator cannot
+defragment to place that block even though total free > needed. Short tracks
+(171 s) stay under the ceiling and fit. **Not** caused by other GPU processes:
+ComfyUI idling on this host holds no VRAM (nvidia-smi showed 0 MiB attributed)
+— do not kill it to "free headroom"; it was never the constraint.
+
+What does NOT work here (verified 2026-09-11):
+- `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` — **no-op on Windows**
+  (warning: "expandable_segments not supported on this platform").
+- `max_split_size_mb`, `--offload-ar`, raising `--budget` to 31 — all still OOM.
+
+Working fix: query tiling. The library's `query_chunk_size` bounds the NAR
+attention temp storage without changing results ("changes temporary storage,
+never the visible key set"). The CLI does not expose it, so a local patch in
+`D:\AI\YuE\src\yue2\nar.py` (in `attention()`) reads
+`YUE2_QUERY_CHUNK_SIZE` from the environment when the arg is None (inert
+unless set). Run long-song renders with:
+
+```bash
+YUE2_QUERY_CHUNK_SIZE=1024 .venv\Scripts\python.exe -m yue2.cli generate \
+  --request <req.json> --abc-file <score.abc> --cot melody \
+  --output <fresh dir> --backend torch-eager --budget 31
+```
+
+Verified: 333 s grunge cover completed (32/32 NAR steps, 9/9 VAE chunks) at
+~18 GiB used. If the YuE repo is updated/reinstalled, re-apply the patch or
+pass `query_chunk_size` programmatically.
 
 ## Deliver an audible result
 
