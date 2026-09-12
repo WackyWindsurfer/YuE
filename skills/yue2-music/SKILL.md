@@ -37,10 +37,17 @@ audio-reference, phoneme-alignment, or local-inpainting argument.
 
 Two engines are available on this host; pick per request (the user may name one explicitly):
 
-- **torch** (default): `yue2` CLI or `run_yue2.py` helper with `--backend torch-eager`. Use for editable plans, ABC export, plan-only, and the normal workflow.
+- **torch** (default): `yue2` CLI or `run_yue2.py` helper. **The default CUDA-graph backend now works on this host** (the `cuda_graph.py` flash-attention fallback fix is committed on branch `agent/yue2-flash-fallback-and-nar-oom-fix` and active in the editable install) — it probes `is_flash_attention_available()` and falls back to cuDNN/SDPA instead of crashing. Verified: 63.1 s of audio in 31.3 s on the default backend. Use for editable plans, ABC export, plan-only, and the normal workflow. `--backend torch-eager` remains a safe fallback if the graph path ever misbehaves.
 - **audio.cpp GGUF**: standalone CLI (`D:\AI\audio.cpp\build\windows-cuda-release\bin\audiocpp_cli.exe`) with the GGUF bundle in `D:\AI\YuE\models\Yue2-3B-GGUF`. Use when the user asks for GGUF/Q8/Q4/low-VRAM. **Not available for plan-only or ABC export.** See [gguf-engine.md](references/gguf-engine.md) for the exact command and request-JSON shape.
 
-Both write to `D:\AI\output\YuE\<name>\`. Torch results carry structured truncation flags; GGUF results do not — mark them "needs review" and listen for a complete ending.
+**Model paths (torch engine):** the local `D:\AI\YuE\models\Yue2-3B` and `models\YuE2-Vae` dirs are **incomplete** (weights only, no `qwen.tiktoken`/`config.json`), so the CLI's local-dir auto-detection fails. Either let the CLI fall back to the HF cache (`m-a-p/YuE2-3B` / `m-a-p/YuE2-Vae` — the default when the local dir is absent), or pass the full HF snapshot dirs:
+
+```bat
+--model C:\Users\michi\.cache\huggingface\hub\models--m-a-p--YuE2-3B\snapshots\1a96eca688d6ae5d7f0feb88573fec89920fcd19
+--vae C:\Users\michi\.cache\huggingface\hub\models--m-a-p--YuE2-Vae\snapshots\95535e72a97bc0f09b8ada125d26b4009428c0e8
+```
+
+Both engines write to `D:\AI\output\YuE\<name>\`. Torch results carry structured truncation flags; GGUF results do not — mark them "needs review" and listen for a complete ending.
 
 ## Set up the needed models
 
