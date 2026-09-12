@@ -55,7 +55,7 @@ Short `full`-planning song, Q8_0 + F16 + CUDA + 32 ODE steps: **52.7 s of 48 kHz
 
 | Need | Engine |
 |---|---|
-| Normal song, editable plan, ABC export, plan-only | **torch** (`--backend torch-eager`) |
+| Normal song, editable plan, ABC export, plan-only | **torch** (default backend; `--backend torch-eager` as fallback) |
 | GGUF / low-VRAM / Q8 or Q4 | **audio.cpp GGUF** (this reference) |
 | Score-conditioned cover (supplied ABC) | either |
 | Source transcription | SheetSage2 (separate env) — then either engine |
